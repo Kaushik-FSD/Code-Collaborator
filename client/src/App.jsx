@@ -6,7 +6,7 @@ import Editor from "@monaco-editor/react";
 const socket = io("http://localhost:9443");
 
 const App = () => {
-  const [joined, setJoined] = useState(false); // State to track if user has joined
+  const [joined, setJoined] = useState(false);
   const [roomId, setRoomId] = useState("");
   const [userName, setUserName] = useState("");
   const [language, setLanguage] = useState("javascript");
@@ -15,27 +15,76 @@ const App = () => {
   const [users, setUsers] = useState([]);
   const [typing, setTyping] = useState("");
 
+  useEffect(() => {
+    socket.on("userJoined", (users) => {
+      setUsers(users);
+    });
+
+    socket.on("codeUpdate", (newCode) => {
+      setCode(newCode);
+    });
+
+    socket.on("userTyping", (user) => {
+      setTyping(`${user.slice(0, 8)}... is Typing`);
+      setTimeout(() => setTyping(""), 2000);
+    });
+
+    socket.on("languageUpdate", (newLanguage) => {
+      setLanguage(newLanguage);
+    });
+
+    return () => {
+      socket.off("userJoined");
+      socket.off("codeUpdate");
+      socket.off("userTyping");
+      socket.off("languageUpdate");
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      socket.emit("leaveRoom");
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
   const joinRoom = () => {
-    console.log("Joining room: roomId", roomId, ", user-name", userName);
     if (roomId && userName) {
-      socket.emit("join", { roomId, userName }); //send roomId and userName to server
+      socket.emit("join", { roomId, userName });
       setJoined(true);
     }
   };
 
+  const leaveRoom = () => {
+    socket.emit("leaveRoom");
+    setJoined(false);
+    setRoomId("");
+    setUserName("");
+    setCode("// start code here");
+    setLanguage("javascript");
+  };
+
   const copyRoomId = () => {
     navigator.clipboard.writeText(roomId);
-    setCopySuccess("Room Code Copied");
+    setCopySuccess("Copied!");
     setTimeout(() => setCopySuccess(""), 2000);
   };
 
-  const leaveRoom = () => {
-    console.log("Leaving room:", roomId);
+  const handleCodeChange = (newCode) => {
+    setCode(newCode);
+    socket.emit("codeChange", { roomId, code: newCode });
+    socket.emit("typing", { roomId, userName });
   };
 
-  const handleCodeChange = (newCode) => {
-    // console.log("Code changed:", code);
-    setCode(newCode);
+  const handleLanguageChange = (e) => {
+    const newLanguage = e.target.value;
+    setLanguage(newLanguage);
+    socket.emit("languageChange", { roomId, language: newLanguage });
   };
 
   if (!joined) {
@@ -60,6 +109,7 @@ const App = () => {
       </div>
     );
   }
+
   return (
     <div className="editor-container">
       <div className="sidebar">
@@ -72,16 +122,15 @@ const App = () => {
         </div>
         <h3>Users in Room:</h3>
         <ul>
-          {/* {users.map((user, index) => (
-            <li key={index}>{user.slice(0, 8)}...</li>
-          ))} */}
-          <li>Kaushik M</li>
+          {users.map((user, index) => (
+            <li key={index}>{user}</li>
+          ))}
         </ul>
-        <p className="typing-indicator">user typing</p>
+        <p className="typing-indicator">{typing}</p>
         <select
           className="language-selector"
           value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+          onChange={handleLanguageChange}
         >
           <option value="javascript">JavaScript</option>
           <option value="python">Python</option>

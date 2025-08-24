@@ -1,11 +1,9 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-
-// https://www.youtube.com/watch?v=p9i4GZGLxGw
+import path from "path";
 
 const app = express();
-const PORT = process.env.port || 9443;
 
 const server = http.createServer(app);
 
@@ -15,38 +13,78 @@ const io = new Server(server, {
   },
 });
 
-const rooms = new Map(); // Map to track rooms and their participants (roomId, array of users)
+const rooms = new Map();
 
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log("User Connected", socket.id);
 
   let currentRoom = null;
   let currentUser = null;
 
   socket.on("join", ({ roomId, userName }) => {
-    // if user is already in a room, leave that room first
     if (currentRoom) {
       socket.leave(currentRoom);
-      rooms.get(currentRoom).delete(currentUser); // Remove user from room map
+      rooms.get(currentRoom).delete(currentUser);
       io.to(currentRoom).emit("userJoined", Array.from(rooms.get(currentRoom)));
     }
 
-    //if user not joined, then we will join the user to the room
     currentRoom = roomId;
     currentUser = userName;
+
     socket.join(roomId);
 
-    //If the room does not exist in the rooms map, it is created as a new Set.
     if (!rooms.has(roomId)) {
       rooms.set(roomId, new Set());
     }
-    rooms.get(roomId).add(userName); // Add user to new room
-    io.to(roomId).emit("userJoined", Array.from(rooms.get(roomId)));
 
-    console.log(`User ${userName} joined room: ${roomId}`);
+    rooms.get(roomId).add(userName);
+
+    io.to(roomId).emit("userJoined", Array.from(rooms.get(currentRoom)));
+  });
+
+  socket.on("codeChange", ({ roomId, code }) => {
+    socket.to(roomId).emit("codeUpdate", code);
+  });
+
+  socket.on("leaveRoom", () => {
+    if (currentRoom && currentUser) {
+      rooms.get(currentRoom).delete(currentUser);
+      io.to(currentRoom).emit("userJoined", Array.from(rooms.get(currentRoom)));
+
+      socket.leave(currentRoom);
+
+      currentRoom = null;
+      currentUser = null;
+    }
+  });
+
+  socket.on("typing", ({ roomId, userName }) => {
+    socket.to(roomId).emit("userTyping", userName);
+  });
+
+  socket.on("languageChange", ({ roomId, language }) => {
+    io.to(roomId).emit("languageUpdate", language);
+  });
+
+  socket.on("disconnect", () => {
+    if (currentRoom && currentUser) {
+      rooms.get(currentRoom).delete(currentUser);
+      io.to(currentRoom).emit("userJoined", Array.from(rooms.get(currentRoom)));
+    }
+    console.log("user Disconnected");
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+const port = process.env.PORT || 9443;
+
+const __dirname = path.resolve();
+
+app.use(express.static(path.join(__dirname, "/frontend/dist")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
+});
+
+server.listen(port, () => {
+  console.log("server is working on port 5000");
 });

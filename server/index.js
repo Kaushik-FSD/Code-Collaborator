@@ -15,7 +15,7 @@ const io = new Server(server, {
   },
 });
 
-const rooms = new Map(); // Map to track rooms and their participants
+const rooms = new Map(); // Map to track rooms and their participants (roomId, array of users)
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -27,7 +27,7 @@ io.on("connection", (socket) => {
     // if user is already in a room, leave that room first
     if (currentRoom) {
       socket.leave(currentRoom);
-      rooms.get(currentRoom).delete(currentUser); // Remove user from room
+      rooms.get(currentRoom).delete(currentUser); // Remove user from room map
       io.to(currentRoom).emit("userJoined", Array.from(rooms.get(currentRoom)));
     }
 
@@ -36,11 +36,14 @@ io.on("connection", (socket) => {
     currentUser = userName;
     socket.join(roomId);
 
+    //If the room does not exist in the rooms map, it is created as a new Set.
     if (!rooms.has(roomId)) {
       rooms.set(roomId, new Set());
     }
-    rooms.get(roomId).add(userName); // Add user to room
+    rooms.get(roomId).add(userName); // Add user to new room
     io.to(roomId).emit("userJoined", Array.from(rooms.get(roomId)));
+
+    console.log(`User ${userName} joined room: ${roomId}`);
   });
 });
 
